@@ -38,7 +38,7 @@ namespace LaunchDarkly.Client.SharedTests.FeatureStore
         /// Override this to return false if two StoreT instances returned by CreateStore do *not*
         /// share the same underlying data, i.e. a change made in one cannot be read by the other.
         /// </summary>
-        protected bool InstancesShareSameData
+        protected virtual bool InstancesShareSameData
         {
             get
             {
@@ -53,7 +53,7 @@ namespace LaunchDarkly.Client.SharedTests.FeatureStore
         /// </summary>
         /// <param name="prefix">the prefix string</param>
         /// <returns>a store instance, or null if prefixes are not supported</returns>
-        protected IFeatureStore CreateStoreImplWithPrefix(string prefix)
+        protected virtual IFeatureStore CreateStoreImplWithPrefix(string prefix)
         {
             return null;
         }
