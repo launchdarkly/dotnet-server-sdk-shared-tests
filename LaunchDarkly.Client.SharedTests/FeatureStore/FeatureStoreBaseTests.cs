@@ -25,7 +25,7 @@ namespace LaunchDarkly.Client.SharedTests.FeatureStore
         /// </summary>
         /// <param name="caching">the caching configuration</param>
         /// <returns>a store instance</returns>
-        protected abstract IFeatureStore CreateStoreImpl(FeatureStoreCaching caching);
+        protected abstract IFeatureStore CreateStoreImpl(FeatureStoreCacheConfig caching);
 
         /// <summary>
         /// Override this method to ensure that any existing data is removed from the underlying data store
@@ -80,7 +80,7 @@ namespace LaunchDarkly.Client.SharedTests.FeatureStore
         private IFeatureStore MakeStore(TestMode mode)
         {
             var store = CreateStoreImpl(mode == TestMode.CACHED ?
-                FeatureStoreCaching.Enabled : FeatureStoreCaching.Disabled);
+                FeatureStoreCacheConfig.Enabled : FeatureStoreCacheConfig.Disabled);
             storesCreated.Add(store);
             return store;
         }
