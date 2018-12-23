@@ -58,6 +58,19 @@ namespace LaunchDarkly.Client.SharedTests.FeatureStore
             return null;
         }
 
+        /// <summary>
+        /// Override this method if the feature store has a non-atomic update mechanism that needs to
+        /// be tested for race conditions. The returned store instance should invoke the specified
+        /// Action within every Upsert, after reading the current value but before writing the
+        /// updated value. The test will use this to modify the value during that interval.
+        /// </summary>
+        /// <param name="hook">an Action to be executed during Upserts</param>
+        /// <returns>a store instance, or null if this mechanism is not supported</returns>
+        protected virtual IFeatureStore CreateStoreImplWithUpdateHook(Action hook)
+        {
+            return null;
+        }
+
         private readonly TestEntity item1 = new TestEntity("foo", 5);
         private readonly TestEntity item2 = new TestEntity("bar", 5);
         private readonly OtherTestEntity other1 = new OtherTestEntity("baz", 5);
@@ -326,7 +339,7 @@ namespace LaunchDarkly.Client.SharedTests.FeatureStore
             store2.Upsert(TestEntity.Kind, store2Item3);
 
             var items1 = store1.All(TestEntity.Kind);
-            Assert.Equal(2, items1.Count);
+            Assert.Equal(3, items1.Count);
             Assert.Equal(store1Item1, items1[store1Item1.Key]);
             Assert.Equal(store1Item2, items1[store1Item2.Key]);
             Assert.Equal(store1Item3, items1[store1Item3.Key]);
@@ -334,13 +347,73 @@ namespace LaunchDarkly.Client.SharedTests.FeatureStore
             Assert.Equal(store1Item2, store1.Get(TestEntity.Kind, store1Item2.Key));
             Assert.Equal(store1Item3, store1.Get(TestEntity.Kind, store1Item3.Key));
             var items2 = store2.All(TestEntity.Kind);
-            Assert.Equal(2, items2.Count);
+            Assert.Equal(3, items2.Count);
             Assert.Equal(store2Item1, items2[store2Item1.Key]);
             Assert.Equal(store2Item2, items2[store2Item2.Key]);
             Assert.Equal(store2Item3, items2[store2Item3.Key]);
             Assert.Equal(store2Item1, store2.Get(TestEntity.Kind, store2Item1.Key));
             Assert.Equal(store2Item2, store2.Get(TestEntity.Kind, store2Item2.Key));
             Assert.Equal(store2Item3, store2.Get(TestEntity.Kind, store2Item3.Key));
+        }
+
+        [Fact]
+        public void UpsertRaceConditionAgainstOtherClientWithLowerVersion()
+        {
+            var key = "key";
+            var item1 = new TestEntity(key, 1);
+            using (var store2 = MakeStore(TestMode.UNCACHED))
+            {
+                var action = MakeConcurrentModifier(store2, key, 2, 3, 4);
+                var store1 = CreateStoreImplWithUpdateHook(action);
+                if (store1 == null)
+                {
+                    // This feature store implementation doesn't support this test
+                    return;
+                }
+                store1.Init(new DataBuilder().Add(TestEntity.Kind, item1).Build());
+
+                var item10 = item1.WithVersion(10);
+                store1.Upsert(TestEntity.Kind, item10);
+
+                Assert.Equal(item10, store1.Get(TestEntity.Kind, key));
+            }
+        }
+        
+        [Fact]
+        public void UpsertRaceConditionAgainstOtherClientWithHigherVersion()
+        {
+            var key = "key";
+            var item1 = new TestEntity(key, 1);
+            using (var store2 = MakeStore(TestMode.UNCACHED))
+            {
+                var action = MakeConcurrentModifier(store2, key, 3, 4, 5);
+                var store1 = CreateStoreImplWithUpdateHook(action);
+                if (store1 == null)
+                {
+                    // This feature store implementation doesn't support this test
+                    return;
+                }
+                store1.Init(new DataBuilder().Add(TestEntity.Kind, item1).Build());
+
+                var item2 = item1.WithVersion(2);
+                store1.Upsert(TestEntity.Kind, item2);
+
+                var item5 = item1.WithVersion(5);
+                Assert.Equal(item5, store1.Get(TestEntity.Kind, key));
+            }
+        }
+
+        private Action MakeConcurrentModifier(IFeatureStore store, string key, params int[] versionsToWrite)
+        {
+            var i = 0;
+            return () =>
+            {
+                if (i < versionsToWrite.Length)
+                {
+                    store.Upsert(TestEntity.Kind, new TestEntity(key, versionsToWrite[i]));
+                    i++;
+                }
+            };
         }
     }
 
