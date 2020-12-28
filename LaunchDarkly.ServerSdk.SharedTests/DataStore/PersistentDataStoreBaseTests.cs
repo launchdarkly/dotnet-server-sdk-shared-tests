@@ -338,6 +338,19 @@ namespace LaunchDarkly.Sdk.Server.SharedTests.DataStore
             }
         }
 
+        [Fact]
+        public async void LdClientEndToEndTests()
+        {
+            // This is a basic smoke test to verify that the data store component behaves correctly within an
+            // SDK client instance.
+
+            var clientConfig = LaunchDarkly.Sdk.Server.Configuration.Builder("sdk-key");
+            if (Configuration.StoreFactoryFunc != null)
+            {
+                clientConfig.DataStore(Components.PersistentStore())
+            }
+        }
+
         private Action MakeConcurrentModifier(StoreT store, string key, params int[] versionsToWrite)
         {
             var i = 0;
