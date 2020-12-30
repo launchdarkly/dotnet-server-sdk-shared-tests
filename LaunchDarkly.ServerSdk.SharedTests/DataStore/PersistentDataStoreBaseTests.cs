@@ -5,13 +5,14 @@ using System.Threading.Tasks;
 using LaunchDarkly.Logging;
 using LaunchDarkly.Sdk.Server.Interfaces;
 using Xunit;
+using Xunit.Abstractions;
 
 using static LaunchDarkly.Sdk.Server.Interfaces.DataStoreTypes;
 
 namespace LaunchDarkly.Sdk.Server.SharedTests.DataStore
 {
     /// <summary>
-    /// A configurable test suite for all implementations of <c>IPersistentDataStore</c>.
+    /// A configurable Xunit test class for all implementations of <c>IPersistentDataStore</c>.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -44,6 +45,17 @@ namespace LaunchDarkly.Sdk.Server.SharedTests.DataStore
         private readonly TestEntity item2 = new TestEntity("second", 5, "value2");
         private readonly TestEntity other1 = new TestEntity("third", 5, "othervalue1");
         private readonly string unusedKey = "whatever";
+        private readonly ILogAdapter _testLogging;
+
+        protected PersistentDataStoreBaseTests()
+        {
+            _testLogging = Logs.None;
+        }
+
+        protected PersistentDataStoreBaseTests(ITestOutputHelper testOutput)
+        {
+            _testLogging = TestLogging.TestOutputAdapter(testOutput);
+        }
 
         [Fact]
         public async void StoreNotInitializedBeforeInit()
@@ -339,15 +351,74 @@ namespace LaunchDarkly.Sdk.Server.SharedTests.DataStore
         }
 
         [Fact]
-        public async void LdClientEndToEndTests()
+        public void LdClientEndToEndTests()
         {
             // This is a basic smoke test to verify that the data store component behaves correctly within an
             // SDK client instance.
 
-            var clientConfig = LaunchDarkly.Sdk.Server.Configuration.Builder("sdk-key");
+            var flag = FlagTestData.MakeFlagThatReturnsVariationForSegmentMatch(1, FlagTestData.GoodVariation1);
+            var segment = FlagTestData.MakeSegmentThatMatchesUserKeys(1, FlagTestData.UserKey);
+            var data = FlagTestData.MakeFullDataSet(flag, segment);
+            var dataSourceFactory = new TestDataSourceFactory(data);
+
+            var clientConfig = LaunchDarkly.Sdk.Server.Configuration.Builder("sdk-key")
+                .DataSource(dataSourceFactory)
+                .Events(Components.NoEvents)
+                .Logging(Components.Logging(_testLogging));
+
             if (Configuration.StoreFactoryFunc != null)
             {
-                clientConfig.DataStore(Components.PersistentStore())
+                clientConfig.DataStore(Components.PersistentDataStore(Configuration.StoreFactoryFunc(null)));
+            }
+            else if (Configuration.StoreAsyncFactoryFunc != null)
+            {
+                clientConfig.DataStore(Components.PersistentDataStore(Configuration.StoreAsyncFactoryFunc(null)));
+            }
+            else
+            {
+                throw new InvalidOperationException("neither StoreFactoryFunc nor StoreAsyncFactoryFunc was set");
+            }
+
+            using (var client = new LdClient(clientConfig.Build()))
+            {
+                var dataSourceUpdates = dataSourceFactory._updates;
+
+                Action<User, LdValue> flagShouldHaveValueForUser = (user, value) =>
+                    Assert.Equal(value, client.JsonVariation(FlagTestData.FlagKey, user, LdValue.Null));
+
+                // evaluate each flag from the data store
+                flagShouldHaveValueForUser(FlagTestData.MainUser, FlagTestData.GoodValue1);
+                flagShouldHaveValueForUser(FlagTestData.OtherUser, FlagTestData.BadValue);
+
+                // evaluate all flags
+                var state = client.AllFlagsState(FlagTestData.MainUser);
+                Assert.Equal(FlagTestData.GoodValue1, state.GetFlagValueJson(FlagTestData.FlagKey));
+
+                // update the flag
+                var flagV2 = FlagTestData.MakeFlagThatReturnsVariationForSegmentMatch(2, FlagTestData.GoodVariation2);
+                dataSourceUpdates.Upsert(DataModel.Features, FlagTestData.FlagKey, flagV2);
+
+                // flag should now return new value
+                flagShouldHaveValueForUser(FlagTestData.MainUser, FlagTestData.GoodValue2);
+                flagShouldHaveValueForUser(FlagTestData.OtherUser, FlagTestData.BadValue);
+
+                // update the segment so it now matches both users
+                var segmentV2 = FlagTestData.MakeSegmentThatMatchesUserKeys(2,
+                    FlagTestData.UserKey, FlagTestData.OtherUserKey);
+                dataSourceUpdates.Upsert(DataModel.Segments, FlagTestData.SegmentKey, segmentV2);
+
+                flagShouldHaveValueForUser(FlagTestData.MainUser, FlagTestData.GoodValue2);
+                flagShouldHaveValueForUser(FlagTestData.OtherUser, FlagTestData.GoodValue2);
+
+                // delete the segment - should cause the flag that uses it to stop matching
+                dataSourceUpdates.Upsert(DataModel.Segments, FlagTestData.SegmentKey, ItemDescriptor.Deleted(3));
+                flagShouldHaveValueForUser(FlagTestData.MainUser, FlagTestData.BadValue);
+                flagShouldHaveValueForUser(FlagTestData.OtherUser, FlagTestData.BadValue);
+
+                // delete the flag so it becomes unknown
+                dataSourceUpdates.Upsert(DataModel.Features, FlagTestData.FlagKey, ItemDescriptor.Deleted(3));
+                var detail = client.JsonVariationDetail(FlagTestData.FlagKey, FlagTestData.MainUser, LdValue.Null);
+                Assert.Equal(EvaluationReason.ErrorReason(EvaluationErrorKind.FLAG_NOT_FOUND), detail.Reason);
             }
         }
 
@@ -476,6 +547,45 @@ namespace LaunchDarkly.Sdk.Server.SharedTests.DataStore
                     }
                 ).ToArray()
                 );
+        }
+
+        private class TestDataSourceFactory : IDataSourceFactory
+        {
+            private readonly FullDataSet<ItemDescriptor> _data;
+            internal IDataSourceUpdates _updates;
+
+            internal TestDataSourceFactory(FullDataSet<ItemDescriptor> data)
+            {
+                _data = data;
+            }
+
+            public IDataSource CreateDataSource(LdClientContext context, IDataSourceUpdates dataSourceUpdates)
+            {
+                _updates = dataSourceUpdates;
+                return new TestDataSource(_data, dataSourceUpdates);
+            }
+        }
+
+        private class TestDataSource : IDataSource
+        {
+            private readonly FullDataSet<ItemDescriptor> _data;
+            private readonly IDataSourceUpdates _updates;
+
+            internal TestDataSource(FullDataSet<ItemDescriptor> data, IDataSourceUpdates updates)
+            {
+                _data = data;
+                _updates = updates;
+            }
+
+            public void Dispose() { }
+
+            public bool Initialized() => true;
+
+            public Task<bool> Start()
+            {
+                _updates.Init(_data);
+                return Task.FromResult(true);
+            }
         }
     }
 }

@@ -11,9 +11,6 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.4.1" />
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="DataStore\" />
-  </ItemGroup>
-  <ItemGroup>
     <ProjectReference Include="..\LaunchDarkly.ServerSdk.SharedTests\LaunchDarkly.ServerSdk.SharedTests.csproj" />
   </ItemGroup>
 </Project>

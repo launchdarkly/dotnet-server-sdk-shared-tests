@@ -1,5 +1,6 @@
 ﻿using System.Threading.Tasks;
 using LaunchDarkly.Sdk.Server.Interfaces;
+using Xunit.Abstractions;
 
 namespace LaunchDarkly.Sdk.Server.SharedTests.DataStore
 {
@@ -16,6 +17,8 @@ namespace LaunchDarkly.Sdk.Server.SharedTests.DataStore
                 StoreFactoryFunc = CreateStoreFactory,
                 ClearDataAction = ClearAllData,
             };
+
+        public PersistentDataStoreBaseTestsSyncTest(ITestOutputHelper testOutput) : base(testOutput) { }
 
         private IPersistentDataStoreFactory CreateStoreFactory(string prefix) =>
             new MockSyncStoreFactory { Database = _database, Prefix = prefix };
