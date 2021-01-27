@@ -8,7 +8,7 @@
     <Description>LaunchDarkly .NET Shared Tests</Description>
     <Company>LaunchDarkly</Company>
     <Copyright>Copyright 2020 Catamorphic, Co.</Copyright>
-    <PackageLicenseUrl>https://raw.githubusercontent.com/launchdarkly/dotnet-server-sdk-shared-tests/master/LICENSE</PackageLicenseUrl>
+    <LicenseExpression>Apache-2.0</LicenseExpression>
     <RootNamespace>LaunchDarkly.Sdk.Server.SharedTests</RootNamespace>
   </PropertyGroup>
 
