@@ -1,6 +1,5 @@
 LaunchDarkly Server-Side .NET SDK Shared Test Code
 ==================================================
-[![CircleCI](https://circleci.com/gh/launchdarkly/dotnet-server-sdk-shared-tests.svg?style=svg)](https://circleci.com/gh/launchdarkly/dotnet-server-sdk-shared-tests)
 
 This project provides support code for testing LaunchDarkly .NET SDK integrations. Feature store implementations, etc., should use this code whenever possible to ensure consistent test coverage and avoid repetition. An example of a project using this code is [dotnet-server-sdk-redis](https://github.com/launchdarkly/dotnet-server-sdk-redis).
 
