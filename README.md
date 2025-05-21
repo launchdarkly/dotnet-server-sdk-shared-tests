@@ -1,3 +1,7 @@
+# [DEPRECATED] LaunchDarkly Server-Side .NET SDK Shared Test Code - please use https://github.com/launchdarkly/dotnet-core/tree/main/pkgs/shared/dotnet-server-sdk-shared-tests
+
+Development has moved to [dotnet-core repository](https://github.com/launchdarkly/dotnet-core/tree/main/pkgs/shared/dotnet-server-sdk-shared-tests). This repository remains here to support legacy references to dotnet-server-sdk-shared-tests.
+
 LaunchDarkly Server-Side .NET SDK Shared Test Code
 ==================================================
 
